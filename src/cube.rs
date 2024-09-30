@@ -46,13 +46,13 @@ impl RayIntersect for Cube {
             tmax = tzmax;
         }
 
-        // Ahora sabemos que hay una intersección
+        
         let intersect_point = ray_origin + ray_direction * tmin;
         let mut normal = Vec3::new(0.0, 0.0, 0.0);
         let mut u = 0.0;
         let mut v = 0.0;
         
-        // Determinar qué cara del cubo fue golpeada y calcular las coordenadas u, v
+        
         if tmin == tzmin {
             normal.z = if ray_direction.z < 0.0 { 1.0 } else { -1.0 };
             u = (intersect_point.x - self.min.x) / (self.max.x - self.min.x);
