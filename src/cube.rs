@@ -46,19 +46,27 @@ impl RayIntersect for Cube {
             tmax = tzmax;
         }
 
-        // Now we know we have an intersection
+        // Ahora sabemos que hay una intersección
         let intersect_point = ray_origin + ray_direction * tmin;
         let mut normal = Vec3::new(0.0, 0.0, 0.0);
+        let mut u = 0.0;
+        let mut v = 0.0;
         
-        // Determine which face of the cube was hit (determine the normal)
+        // Determinar qué cara del cubo fue golpeada y calcular las coordenadas u, v
         if tmin == tzmin {
             normal.z = if ray_direction.z < 0.0 { 1.0 } else { -1.0 };
+            u = (intersect_point.x - self.min.x) / (self.max.x - self.min.x);
+            v = (intersect_point.y - self.min.y) / (self.max.y - self.min.y);
         } else if tmin == tymin {
             normal.y = if ray_direction.y < 0.0 { 1.0 } else { -1.0 };
+            u = (intersect_point.x - self.min.x) / (self.max.x - self.min.x);
+            v = (intersect_point.z - self.min.z) / (self.max.z - self.min.z);
         } else {
             normal.x = if ray_direction.x < 0.0 { 1.0 } else { -1.0 };
+            u = (intersect_point.z - self.min.z) / (self.max.z - self.min.z);
+            v = (intersect_point.y - self.min.y) / (self.max.y - self.min.y);
         }
 
-        Intersect::new(intersect_point, normal, tmin, self.material.clone(), 0.0, 0.0)
+        Intersect::new(intersect_point, normal, tmin, self.material.clone(), u, v)
     }
 }
