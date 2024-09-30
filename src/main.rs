@@ -1,30 +1,29 @@
-use nalgebra_glm::{Vec3, normalize};
+use crate::texture::Texture;
 use minifb::{Key, Window, WindowOptions};
-use std::time::Duration;
+use nalgebra_glm::{normalize, Vec3};
 use std::f32::consts::PI;
-// use rand::{Rng};
+use std::sync::Arc;
+use std::time::Duration;
 
-mod framebuffer;
-mod ray_intersect;
-mod sphere; 
-mod color;
 mod camera;
+mod color;
+mod cube;
+mod framebuffer;
 mod light;
 mod material;
+mod ray_intersect;
+mod sphere;
 mod texture;
-mod cube;
 
-use framebuffer::Framebuffer;
-use sphere::Sphere;
-use color::Color;
-use ray_intersect::{Intersect, RayIntersect};
+use crate::cube::Cube;
 use camera::Camera;
+use color::Color;
+use framebuffer::Framebuffer;
 use light::Light;
 use material::Material;
-use crate::cube::Cube;
+use ray_intersect::{Intersect, RayIntersect};
 
 const ORIGIN_BIAS: f32 = 1e-4;
-const SKYBOX_COLOR: Color = Color::new(68, 142, 228);
 
 fn offset_origin(intersect: &Intersect, direction: &Vec3) -> Vec3 {
     let offset = intersect.normal * ORIGIN_BIAS;
@@ -41,25 +40,22 @@ fn reflect(incident: &Vec3, normal: &Vec3) -> Vec3 {
 
 fn refract(incident: &Vec3, normal: &Vec3, eta_t: f32) -> Vec3 {
     let cosi = -incident.dot(normal).max(-1.0).min(1.0);
-    
+
     let (n_cosi, eta, n_normal);
 
     if cosi < 0.0 {
-        // Ray is entering the object
         n_cosi = -cosi;
         eta = 1.0 / eta_t;
         n_normal = -normal;
     } else {
-        // Ray is leaving the object
         n_cosi = cosi;
-        eta = eta_t;  // Assuming it's going back into air with index 1.0
+        eta = eta_t; 
         n_normal = *normal;
     }
-    
+
     let k = 1.0 - eta * eta * (1.0 - n_cosi * n_cosi);
-    
+
     if k < 0.0 {
-        // Total internal reflection
         reflect(incident, &n_normal)
     } else {
         eta * incident + (eta * n_cosi - k.sqrt()) * n_normal
@@ -69,7 +65,7 @@ fn refract(incident: &Vec3, normal: &Vec3, eta_t: f32) -> Vec3 {
 fn cast_shadow(
     intersect: &Intersect,
     light: &Light,
-    objects: &[&dyn RayIntersect],  // Acepta objetos genéricos
+    objects: &[&dyn RayIntersect], 
 ) -> f32 {
     let light_dir = (light.position - intersect.point).normalize();
     let light_distance = (light.position - intersect.point).magnitude();
@@ -86,19 +82,24 @@ fn cast_shadow(
         }
     }
 
-    shadow_intensity
+    shadow_intensity * 0.9
 }
-
 
 pub fn cast_ray(
     ray_origin: &Vec3,
     ray_direction: &Vec3,
-    objects: &[&dyn RayIntersect],  // Lista de objetos genéricos que implementan RayIntersect
+    objects: &[&dyn RayIntersect],
     light: &Light,
-    depth: u32
+    depth: u32,
+    skybox_texture: &Texture,
 ) -> Color {
-    if depth > 3 {  // default recursion depth
-        return SKYBOX_COLOR; // Max recursion depth reached
+    if depth > 3 {
+        let dir = ray_direction.normalize();
+        let theta = dir.z.atan2(dir.x);
+        let phi = dir.y.asin();
+        let u = (theta + PI) / (2.0 * PI);
+        let v = (phi + PI / 2.0) / PI;
+        return skybox_texture.get_color(u, v);
     }
 
     let mut intersect = Intersect::empty();
@@ -113,8 +114,12 @@ pub fn cast_ray(
     }
 
     if !intersect.is_intersecting {
-        // return default sky box color
-        return SKYBOX_COLOR;
+        let dir = ray_direction.normalize();
+        let theta = dir.z.atan2(dir.x);
+        let phi = dir.y.asin();
+        let u = (theta + PI) / (2.0 * PI);
+        let v = (phi + PI / 2.0) / PI;
+        return skybox_texture.get_color(u, v);
     }
 
     let light_dir = (light.position - intersect.point).normalize();
@@ -125,94 +130,205 @@ pub fn cast_ray(
     let light_intensity = light.intensity * (1.0 - shadow_intensity);
 
     let diffuse_intensity = intersect.normal.dot(&light_dir).max(0.0).min(1.0);
-    let diffuse_color = intersect.material.get_diffuse_color(intersect.u, intersect.v);
-    let diffuse = diffuse_color * intersect.material.albedo[0] * diffuse_intensity * light_intensity;
+    let diffuse_color = intersect
+        .material
+        .get_diffuse_color(intersect.u, intersect.v);
+    let diffuse =
+        diffuse_color * intersect.material.albedo[0] * diffuse_intensity * light_intensity;
 
-    let specular_intensity = view_dir.dot(&reflect_dir).max(0.0).powf(intersect.material.specular);
-    let specular = light.color * intersect.material.albedo[1] * specular_intensity * light_intensity;
+    let specular_intensity = view_dir
+        .dot(&reflect_dir)
+        .max(0.0)
+        .powf(intersect.material.specular);
+    let specular =
+        light.color * intersect.material.albedo[1] * specular_intensity * light_intensity;
 
     let mut reflect_color = Color::black();
     let reflectivity = intersect.material.albedo[2];
     if reflectivity > 0.0 {
         let reflect_dir = reflect(&ray_direction, &intersect.normal).normalize();
         let reflect_origin = offset_origin(&intersect, &reflect_dir);
-        reflect_color = cast_ray(&reflect_origin, &reflect_dir, objects, light, depth + 1);
+        reflect_color =
+            cast_ray(&reflect_origin, &reflect_dir, objects, light, depth + 1, skybox_texture);
     }
-
 
     let mut refract_color = Color::black();
     let transparency = intersect.material.albedo[3];
     if transparency > 0.0 {
-        let refract_dir = refract(&ray_direction, &intersect.normal, intersect.material.refractive_index);
+        let refract_dir = refract(
+            &ray_direction,
+            &intersect.normal,
+            intersect.material.refractive_index,
+        );
         let refract_origin = offset_origin(&intersect, &refract_dir);
-        refract_color = cast_ray(&refract_origin, &refract_dir, objects, light, depth + 1);
+        refract_color =
+            cast_ray(&refract_origin, &refract_dir, objects, light, depth + 1, skybox_texture);
     }
 
-    (diffuse + specular) * (1.0 - reflectivity - transparency) + (reflect_color * reflectivity) + (refract_color * transparency)
+    (diffuse + specular) * (1.0 - reflectivity - transparency)
+        + (reflect_color * reflectivity)
+        + (refract_color * transparency)
 }
 
-pub fn render(framebuffer: &mut Framebuffer, objects: &[&dyn RayIntersect], camera: &Camera, light: &Light){
+pub fn render(
+    framebuffer: &mut Framebuffer,
+    objects: &[&dyn RayIntersect],
+    camera: &Camera,
+    light: &Light,
+    skybox_texture: &Texture, 
+) {
     let width = framebuffer.width as f32;
     let height = framebuffer.height as f32;
     let aspect_ratio = width / height;
-    let fov = PI/3.0;
+    let fov = PI / 3.0;
     let perspective_scale = (fov * 0.5).tan();
-
-    // random number generator
-    // let mut rng = rand::thread_rng();
 
     for y in 0..framebuffer.height {
         for x in 0..framebuffer.width {
-            // if rng.gen_range(0.0..1.0) < 0.9 {
-            //      continue;
-            // }
-
-            // Map the pixel coordinate to screen space [-1, 1]
+            
             let screen_x = (2.0 * x as f32) / width - 1.0;
             let screen_y = -(2.0 * y as f32) / height + 1.0;
 
-            // Adjust for aspect ratio and perspective 
+            
             let screen_x = screen_x * aspect_ratio * perspective_scale;
             let screen_y = screen_y * perspective_scale;
 
-            // Calculate the direction of the ray for this pixel
+            
             let ray_direction = normalize(&Vec3::new(screen_x, screen_y, -1.0));
 
-            // Apply camera rotation to the ray direction
+            
             let rotated_direction = camera.basis_change(&ray_direction);
 
-            // Cast the ray and get the pixel color
-            let pixel_color = cast_ray(&camera.eye, &rotated_direction, objects, light, 0);
+            
+            let pixel_color =
+                cast_ray(&camera.eye, &rotated_direction, objects, light, 0, skybox_texture);
 
-            // Draw the pixel on screen with the returned color
+            
             framebuffer.set_current_color(pixel_color.to_hex());
             framebuffer.point(x, y);
         }
     }
 }
 
+
 fn main() {
-    // Definir materiales
-    let rubber = Material::new_with_texture(1.0, [0.9, 0.1, 0.0, 0.0], 0.0);
-    let ivory = Material::new(Color::new(100, 100, 80), 50.0, [0.6, 0.3, 0.6, 0.0], 0.0);
-    let glass = Material::new(Color::new(255, 255, 255), 1425.0, [0.0, 10.0, 0.5, 0.5], 0.3);
-    let cube_material = Material::new(Color::new(80, 200, 255), 10.0, [0.6, 0.4, 0.0, 0.0], 0.0);
+    let snow_texture = Arc::new(Texture::new("assets/snow.png"));
+    let snow_material =
+        Material::new_with_texture(2.0, [0.9, 0.1, 0.0, 0.0], 0.0, snow_texture, None);
 
-    // Crear los objetos: esferas y cubos
-    let sphere1 = Sphere { center: Vec3::new(0.0, 0.0, 0.0), radius: 1.0, material: rubber };
-    let sphere2 = Sphere { center: Vec3::new(-1.0, -1.0, 1.5), radius: 0.5, material: ivory };
-    let sphere3 = Sphere { center: Vec3::new(-0.3, 0.3, 1.5), radius: 0.3, material: glass };
-    let cube = Cube { min: Vec3::new(-1.0, -1.0, -1.0), max: Vec3::new(1.0, 1.0, 1.0), material: cube_material };
+    let ice_texture = Arc::new(Texture::new("assets/ice.png"));
+    let ice_material =
+        Material::new_with_texture(2.0, [0.3, 0.3, 0.0, 0.4], 0.5, ice_texture, None);
 
-    // Crear la lista de objetos como referencias de RayIntersect
-    let objects: Vec<&dyn RayIntersect> = vec![&sphere1, &sphere2, &sphere3, &cube];
+    
+    let skybox_texture = Arc::new(Texture::new("assets/snowy.jpg"));
+    
+    let mut objects: Vec<Box<dyn RayIntersect>> = Vec::new();
+    let rows = 9;
+    let cols = 9;
+    let size = 2.0; 
+    let x_offset = -(cols as f32) * size / 2.0; 
+    let z_offset = -(rows as f32) * size / 2.0; 
 
-    // Configurar cámara, luz, etc.
-    let mut camera = Camera::new(Vec3::new(0.0, 0.0, 5.0), Vec3::new(0.0, 0.0, 0.0), Vec3::new(0.0, 1.0, 0.0));
+    
+    for row in 0..rows {
+        for col in 0..cols {
+            let x = x_offset + col as f32 * size;
+            let z = z_offset + row as f32 * size;
+            let cube = Cube {
+                min: Vec3::new(x, -size / 2.0, z),
+                max: Vec3::new(x + size, size / 2.0, z + size),
+                material: snow_material.clone(),
+            };
+            objects.push(Box::new(cube));
+        }
+    }
+
+    
+    let pattern_positions_level_1_and_2 = vec![
+        
+        (2, 2), (2, 3), (2, 4), (2, 5), (2, 6),
+        
+        (3, 1), (3, 7),
+        
+        (4, 1), (4, 7),
+        
+        (5, 1), (5, 7),
+        
+        (6, 2), (6, 3), (6, 5), (6, 6),
+    ];
+
+    let pattern_positions_level_3 = vec![
+        
+        (2, 3), (2, 4), (2, 5),
+        
+        (3, 2), (3, 3), (3, 4), (3, 5), (3, 6),
+        
+        (4, 1), (4, 2), (4, 3), (4, 4), (4, 5), (4, 6), (4, 7),
+        
+        (5, 2), (5, 3), (5, 4), (5, 5), (5, 6),
+        
+        (6, 3), (6, 4), (6, 5),
+    ];
+
+    let pattern_positions_level_4 = vec![
+        
+        (3, 4),
+        
+        (4, 3), (4, 4), (4, 5),
+        
+        (5, 4),
+    ];
+
+    
+    struct LevelPattern {
+        y_level: f32,
+        positions: Vec<(usize, usize)>,
+    }
+
+    let levels = vec![
+        LevelPattern {
+            y_level: size / 2.0,
+            positions: pattern_positions_level_1_and_2.clone(),
+        },
+        LevelPattern {
+            y_level: size * 1.5,
+            positions: pattern_positions_level_1_and_2.clone(),
+        },
+        LevelPattern {
+            y_level: size * 2.5,
+            positions: pattern_positions_level_3.clone(),
+        },
+        LevelPattern {
+            y_level: size * 3.4,
+            positions: pattern_positions_level_4.clone(),
+        },
+    ];
+
+    
+    for level in levels {
+        for (row, col) in &level.positions {
+            let x = x_offset + *col as f32 * size;
+            let z = z_offset + *row as f32 * size;
+            let cube = Cube {
+                min: Vec3::new(x, level.y_level, z),
+                max: Vec3::new(x + size, level.y_level + size, z + size),
+                material: ice_material.clone(),
+            };
+            objects.push(Box::new(cube));
+        }
+    }
+
+    
+    let mut camera = Camera::new(
+        Vec3::new(0.0, 15.0, 30.0), 
+        Vec3::new(0.0, 0.0, 0.0),   
+        Vec3::new(0.0, 1.0, 0.0),   
+    );
     let rotation_speed = PI / 50.0;
     let zoom_speed = 0.1;
 
-    let light = Light::new(Vec3::new(1.0, -1.0, 5.0), Color::new(255, 255, 255), 1.0);
+    let light = Light::new(Vec3::new(20.0, 30.0, 20.0), Color::new(177, 182, 250), 15.0);
 
     let window_width = 800;
     let window_height = 600;
@@ -221,7 +337,13 @@ fn main() {
     let frame_delay = Duration::from_millis(16);
 
     let mut framebuffer = Framebuffer::new(framebuffer_width, framebuffer_height);
-    let mut window = Window::new("Rust Graphics - Raytracer Example", window_width, window_height, WindowOptions::default()).unwrap();
+    let mut window = Window::new(
+        "up",
+        window_width,
+        window_height,
+        WindowOptions::default(),
+    )
+    .unwrap();
 
     window.set_position(500, 500);
     window.update();
@@ -231,7 +353,10 @@ fn main() {
             break;
         }
 
-        //  Controles de cámara
+        
+        let object_refs: Vec<&dyn RayIntersect> = objects.iter().map(|obj| obj.as_ref()).collect();
+
+        
         if window.is_key_down(Key::Left) {
             camera.orbit(rotation_speed, 0.0);
         }
@@ -253,10 +378,18 @@ fn main() {
         }
 
         if camera.is_changed() {
-            render(&mut framebuffer, &objects, &camera, &light);
+            render(
+                &mut framebuffer,
+                &object_refs,
+                &camera,
+                &light,
+                &skybox_texture, 
+            );
         }
 
-        window.update_with_buffer(&framebuffer.buffer, framebuffer_width, framebuffer_height).unwrap();
+        window
+            .update_with_buffer(&framebuffer.buffer, framebuffer_width, framebuffer_height)
+            .unwrap();
         std::thread::sleep(frame_delay);
     }
 }

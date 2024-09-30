@@ -17,7 +17,7 @@ impl Sphere {
     }
 
     fn perturb_normal(&self, normal: &Vec3, tangent_normal: &Vec3) -> Vec3 {
-        // Create a local coordinate system
+        
         let tangent = if normal.x.abs() > normal.y.abs() {
             Vec3::new(-normal.z, 0.0, normal.x).normalize()
         } else {
@@ -25,25 +25,25 @@ impl Sphere {
         };
         let bitangent = normal.cross(&tangent);
 
-        // Transform the tangent normal to world space
+        
         let perturbed_normal = tangent * tangent_normal.x + bitangent * tangent_normal.y + normal * tangent_normal.z;
 
-        let blend_factor = 10.0; // Adjust this value to control the strength of the normal map
+        let blend_factor = 10.0; 
         (normal * (1.0 - blend_factor) + perturbed_normal * blend_factor).normalize()
     }
 }
 
 impl RayIntersect for Sphere {
     fn ray_intersect(&self, ray_origin: &Vec3, ray_direction: &Vec3) -> Intersect {
-        // Vector from the ray origin to the center of the sphere
+        
         let oc = ray_origin - self.center;
 
-        // Coefficients for the quadratic equation
+        
         let a = dot(ray_direction, ray_direction);
         let b = 2.0 * dot(&oc, ray_direction);
         let c = dot(&oc, &oc) - self.radius * self.radius;
 
-        // Discriminant of the quadratic equation
+        
         let discriminant = b * b - 4.0 * a * c;
 
         if discriminant > 0.0 {
@@ -65,7 +65,7 @@ impl RayIntersect for Sphere {
             }
         }
 
-        // If no intersection, return an empty intersect
+        
         Intersect::empty()
     }
 }
