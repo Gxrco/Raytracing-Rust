@@ -8,12 +8,10 @@ pub struct Color {
 }
 
 impl Color {
-    
     pub const fn new(r: u8, g: u8, b: u8) -> Self {
         Color { r, g, b }
     }
 
-    
     pub const fn from_hex(hex: u32) -> Self {
         let r = ((hex >> 16) & 0xFF) as u8;
         let g = ((hex >> 8) & 0xFF) as u8;
@@ -25,17 +23,14 @@ impl Color {
         Color { r: 0, g: 0, b: 0 }
     }
 
-    
     pub fn to_hex(&self) -> u32 {
         ((self.r as u32) << 16) | ((self.g as u32) << 8) | (self.b as u32)
     }
 
-    
     pub fn is_black(&self) -> bool {
         self.r == 0 && self.g == 0 && self.b == 0
     }
 }
-
 
 use std::ops::Add;
 
@@ -51,6 +46,15 @@ impl Add for Color {
     }
 }
 
+use std::ops::AddAssign;
+
+impl AddAssign for Color {
+    fn add_assign(&mut self, other: Color) {
+        self.r = self.r.saturating_add(other.r);
+        self.g = self.g.saturating_add(other.g);
+        self.b = self.b.saturating_add(other.b);
+    }
+}
 
 use std::ops::Mul;
 
@@ -66,10 +70,8 @@ impl Mul<f32> for Color {
     }
 }
 
-
 impl fmt::Display for Color {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Color(r: {}, g: {}, b: {})", self.r, self.g, self.b)
     }
 }
-

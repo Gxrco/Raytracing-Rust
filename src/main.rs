@@ -86,11 +86,12 @@ fn cast_shadow(
     shadow_intensity * 0.9
 }
 
+
 pub fn cast_ray(
     ray_origin: &Vec3,
     ray_direction: &Vec3,
     objects: &[&dyn RayIntersect],
-    light: &Light,
+    lights: &[Light],
     depth: u32,
     skybox_texture: &Texture,
 ) -> Color {
@@ -123,26 +124,33 @@ pub fn cast_ray(
         return skybox_texture.get_color(u, v);
     }
 
-    let light_dir = (light.position - intersect.point).normalize();
     let view_dir = (ray_origin - intersect.point).normalize();
-    let reflect_dir = reflect(&-light_dir, &intersect.normal).normalize();
 
-    let shadow_intensity = cast_shadow(&intersect, light, objects);
-    let light_intensity = light.intensity * (1.0 - shadow_intensity);
+    let mut final_color = Color::black();
 
-    let diffuse_intensity = intersect.normal.dot(&light_dir).max(0.0).min(1.0);
-    let diffuse_color = intersect
-        .material
-        .get_diffuse_color(intersect.u, intersect.v);
-    let diffuse =
-        diffuse_color * intersect.material.albedo[0] * diffuse_intensity * light_intensity;
-
-    let specular_intensity = view_dir
-        .dot(&reflect_dir)
-        .max(0.0)
-        .powf(intersect.material.specular);
-    let specular =
-        light.color * intersect.material.albedo[1] * specular_intensity * light_intensity;
+    for light in lights {
+        let light_dir = (light.position - intersect.point).normalize();
+        let reflect_dir = reflect(&-light_dir, &intersect.normal).normalize();
+    
+        let shadow_intensity = cast_shadow(&intersect, light, objects);
+        let light_intensity = light.intensity * (1.0 - shadow_intensity);
+    
+        let diffuse_intensity = intersect.normal.dot(&light_dir).max(0.0).min(1.0);
+        let diffuse_color = intersect
+            .material
+            .get_diffuse_color(intersect.u, intersect.v);
+        let diffuse =
+            diffuse_color * intersect.material.albedo[0] * diffuse_intensity * light_intensity;
+    
+        let specular_intensity = view_dir
+            .dot(&reflect_dir)
+            .max(0.0)
+            .powf(intersect.material.specular);
+        let specular =
+            light.color * intersect.material.albedo[1] * specular_intensity * light_intensity;
+    
+        final_color += diffuse + specular;
+    }
 
     let mut reflect_color = Color::black();
     let reflectivity = intersect.material.albedo[2];
@@ -150,7 +158,7 @@ pub fn cast_ray(
         let reflect_dir = reflect(&ray_direction, &intersect.normal).normalize();
         let reflect_origin = offset_origin(&intersect, &reflect_dir);
         reflect_color =
-            cast_ray(&reflect_origin, &reflect_dir, objects, light, depth + 1, skybox_texture);
+            cast_ray(&reflect_origin, &reflect_dir, objects, lights, depth + 1, skybox_texture);
     }
 
     let mut refract_color = Color::black();
@@ -163,19 +171,22 @@ pub fn cast_ray(
         );
         let refract_origin = offset_origin(&intersect, &refract_dir);
         refract_color =
-            cast_ray(&refract_origin, &refract_dir, objects, light, depth + 1, skybox_texture);
+            cast_ray(&refract_origin, &refract_dir, objects, lights, depth + 1, skybox_texture);
     }
 
-    (diffuse + specular) * (1.0 - reflectivity - transparency)
+    final_color = final_color * (1.0 - reflectivity - transparency)
         + (reflect_color * reflectivity)
-        + (refract_color * transparency)
+        + (refract_color * transparency);
+
+    final_color
 }
+
 
 pub fn render(
     framebuffer: &mut Framebuffer,
     objects: &[&dyn RayIntersect],
     camera: &Camera,
-    light: &Light,
+    lights: &[Light],
     skybox_texture: &Texture,
 ) {
     let width = framebuffer.width as usize;
@@ -184,12 +195,10 @@ pub fn render(
     let fov = PI / 3.0;
     let perspective_scale = (fov * 0.5).tan();
 
-    
     let buffer = Arc::new(Mutex::new(&mut framebuffer.buffer));
 
     let pixels: Vec<usize> = (0..(width * height)).collect();
 
-    
     pixels.par_iter().for_each(|&i| {
         let x = i % width;
         let y = i / width;
@@ -203,14 +212,13 @@ pub fn render(
         let ray_direction = normalize(&Vec3::new(screen_x, screen_y, -1.0));
         let rotated_direction = camera.basis_change(&ray_direction);
 
-        let pixel_color =
-            cast_ray(&camera.eye, &rotated_direction, objects, light, 0, skybox_texture);
+        let pixel_color = cast_ray(&camera.eye, &rotated_direction, objects, lights, 0, skybox_texture);
 
-        
         let mut buffer = buffer.lock().unwrap();
         buffer[i] = pixel_color.to_hex();
     });
 }
+
 
 
 fn main() {
@@ -331,7 +339,9 @@ fn main() {
     let rotation_speed = PI / 50.0;
     let zoom_speed = 0.1;
 
-    let light = Light::new(Vec3::new(20.0, 30.0, 20.0), Color::new(177, 182, 250), 15.0);
+    let light1 = Light::new(Vec3::new(20.0, 30.0, 20.0), Color::new(177, 182, 250), 15.0);
+    let light2 = Light::new(Vec3::new(-20.0, 30.0, -20.0), Color::new(255, 180, 180), 10.0);
+    let lights = vec![light1, light2];
 
     let window_width = 800;
     let window_height = 600;
@@ -341,7 +351,7 @@ fn main() {
 
     let mut framebuffer = Framebuffer::new(framebuffer_width, framebuffer_height);
     let mut window = Window::new(
-        "up",
+        "Snonwy Night Scene - Press ESC to exit",
         window_width,
         window_height,
         WindowOptions::default(),
@@ -385,8 +395,8 @@ fn main() {
                 &mut framebuffer,
                 &object_refs,
                 &camera,
-                &light,
-                &skybox_texture, 
+                &lights,  
+                &skybox_texture,
             );
         }
 
