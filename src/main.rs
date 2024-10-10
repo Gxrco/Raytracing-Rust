@@ -2,8 +2,9 @@ use crate::texture::Texture;
 use minifb::{Key, Window, WindowOptions};
 use nalgebra_glm::{normalize, Vec3};
 use std::f32::consts::PI;
-use std::sync::Arc;
 use std::time::Duration;
+use rayon::prelude::*;
+use std::sync::{Arc, Mutex};
 
 mod camera;
 mod color;
@@ -175,43 +176,45 @@ pub fn render(
     objects: &[&dyn RayIntersect],
     camera: &Camera,
     light: &Light,
-    skybox_texture: &Texture, 
+    skybox_texture: &Texture,
 ) {
-    let width = framebuffer.width as f32;
-    let height = framebuffer.height as f32;
-    let aspect_ratio = width / height;
+    let width = framebuffer.width as usize;
+    let height = framebuffer.height as usize;
+    let aspect_ratio = width as f32 / height as f32;
     let fov = PI / 3.0;
     let perspective_scale = (fov * 0.5).tan();
 
-    for y in 0..framebuffer.height {
-        for x in 0..framebuffer.width {
-            
-            let screen_x = (2.0 * x as f32) / width - 1.0;
-            let screen_y = -(2.0 * y as f32) / height + 1.0;
+    
+    let buffer = Arc::new(Mutex::new(&mut framebuffer.buffer));
 
-            
-            let screen_x = screen_x * aspect_ratio * perspective_scale;
-            let screen_y = screen_y * perspective_scale;
+    let pixels: Vec<usize> = (0..(width * height)).collect();
 
-            
-            let ray_direction = normalize(&Vec3::new(screen_x, screen_y, -1.0));
+    
+    pixels.par_iter().for_each(|&i| {
+        let x = i % width;
+        let y = i / width;
 
-            
-            let rotated_direction = camera.basis_change(&ray_direction);
+        let screen_x = (2.0 * x as f32) / width as f32 - 1.0;
+        let screen_y = -(2.0 * y as f32) / height as f32 + 1.0;
 
-            
-            let pixel_color =
-                cast_ray(&camera.eye, &rotated_direction, objects, light, 0, skybox_texture);
+        let screen_x = screen_x * aspect_ratio * perspective_scale;
+        let screen_y = screen_y * perspective_scale;
 
-            
-            framebuffer.set_current_color(pixel_color.to_hex());
-            framebuffer.point(x, y);
-        }
-    }
+        let ray_direction = normalize(&Vec3::new(screen_x, screen_y, -1.0));
+        let rotated_direction = camera.basis_change(&ray_direction);
+
+        let pixel_color =
+            cast_ray(&camera.eye, &rotated_direction, objects, light, 0, skybox_texture);
+
+        
+        let mut buffer = buffer.lock().unwrap();
+        buffer[i] = pixel_color.to_hex();
+    });
 }
 
 
 fn main() {
+    
     let snow_texture = Arc::new(Texture::new("assets/snow.png"));
     let snow_material =
         Material::new_with_texture(2.0, [0.9, 0.1, 0.0, 0.0], 0.0, snow_texture, None);
