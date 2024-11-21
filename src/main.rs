@@ -1,11 +1,11 @@
 use crate::texture::Texture;
 use minifb::{Key, Window, WindowOptions};
 use nalgebra_glm::{normalize, Vec3};
-use std::f32::consts::PI;
-use std::time::Duration;
-use rayon::prelude::*;
-use std::sync::{Arc, Mutex};
 use rand::random;
+use rayon::prelude::*;
+use std::f32::consts::PI;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 mod camera;
 mod color;
@@ -14,7 +14,6 @@ mod framebuffer;
 mod light;
 mod material;
 mod ray_intersect;
-mod sphere;
 mod texture;
 
 use crate::cube::Cube;
@@ -51,7 +50,7 @@ fn refract(incident: &Vec3, normal: &Vec3, eta_t: f32) -> Vec3 {
         n_normal = -normal;
     } else {
         n_cosi = cosi;
-        eta = eta_t; 
+        eta = eta_t;
         n_normal = *normal;
     }
 
@@ -64,11 +63,7 @@ fn refract(incident: &Vec3, normal: &Vec3, eta_t: f32) -> Vec3 {
     }
 }
 
-fn cast_shadow(
-    intersect: &Intersect,
-    light: &Light,
-    objects: &[&dyn RayIntersect], 
-) -> f32 {
+fn cast_shadow(intersect: &Intersect, light: &Light, objects: &[&dyn RayIntersect]) -> f32 {
     let light_dir = (light.position - intersect.point).normalize();
     let light_distance = (light.position - intersect.point).magnitude();
 
@@ -86,7 +81,6 @@ fn cast_shadow(
 
     shadow_intensity * 0.9
 }
-
 
 pub fn cast_ray(
     ray_origin: &Vec3,
@@ -132,24 +126,24 @@ pub fn cast_ray(
     for light in lights {
         let light_dir = (light.position - intersect.point).normalize();
         let reflect_dir = reflect(&-light_dir, &intersect.normal).normalize();
-    
+
         let shadow_intensity = cast_shadow(&intersect, light, objects);
         let light_intensity = light.intensity * (1.0 - shadow_intensity);
-    
+
         let diffuse_intensity = intersect.normal.dot(&light_dir).max(0.0).min(1.0);
         let diffuse_color = intersect
             .material
             .get_diffuse_color(intersect.u, intersect.v);
         let diffuse =
             diffuse_color * intersect.material.albedo[0] * diffuse_intensity * light_intensity;
-    
+
         let specular_intensity = view_dir
             .dot(&reflect_dir)
             .max(0.0)
             .powf(intersect.material.specular);
         let specular =
             light.color * intersect.material.albedo[1] * specular_intensity * light_intensity;
-    
+
         final_color += diffuse + specular;
     }
 
@@ -158,8 +152,14 @@ pub fn cast_ray(
     if reflectivity > 0.0 {
         let reflect_dir = reflect(&ray_direction, &intersect.normal).normalize();
         let reflect_origin = offset_origin(&intersect, &reflect_dir);
-        reflect_color =
-            cast_ray(&reflect_origin, &reflect_dir, objects, lights, depth + 1, skybox_texture);
+        reflect_color = cast_ray(
+            &reflect_origin,
+            &reflect_dir,
+            objects,
+            lights,
+            depth + 1,
+            skybox_texture,
+        );
     }
 
     let mut refract_color = Color::black();
@@ -171,8 +171,18 @@ pub fn cast_ray(
             intersect.material.refractive_index,
         );
         let refract_origin = offset_origin(&intersect, &refract_dir);
-        refract_color =
-            cast_ray(&refract_origin, &refract_dir, objects, lights, depth + 1, skybox_texture);
+        refract_color = cast_ray(
+            &refract_origin,
+            &refract_dir,
+            objects,
+            lights,
+            depth + 1,
+            skybox_texture,
+        );
+    }
+
+    if intersect.material.emission_intensity > 0.0 {
+        final_color += intersect.material.emission_color * intersect.material.emission_intensity;
     }
 
     final_color = final_color * (1.0 - reflectivity - transparency)
@@ -181,7 +191,6 @@ pub fn cast_ray(
 
     final_color
 }
-
 
 pub fn render(
     framebuffer: &mut Framebuffer,
@@ -213,48 +222,88 @@ pub fn render(
         let ray_direction = normalize(&Vec3::new(screen_x, screen_y, -1.0));
         let rotated_direction = camera.basis_change(&ray_direction);
 
-        let pixel_color = cast_ray(&camera.eye, &rotated_direction, objects, lights, 0, skybox_texture);
+        let pixel_color = cast_ray(
+            &camera.eye,
+            &rotated_direction,
+            objects,
+            lights,
+            0,
+            skybox_texture,
+        );
 
         let mut buffer = buffer.lock().unwrap();
         buffer[i] = pixel_color.to_hex();
     });
 }
 
-
-
 fn main() {
-    
     let snow_texture = Arc::new(Texture::new("assets/snow.png"));
-    let snow_material =
-        Material::new_with_texture(2.0, [0.9, 0.1, 0.0, 0.0], 0.0, snow_texture, None);
+    let snow_material = Material::new_with_texture(
+        2.0,
+        [0.9, 0.1, 0.0, 0.0],
+        0.0,
+        snow_texture.clone(),
+        None,
+        Color::black(),
+        0.0,
+    );
 
     let ice_texture = Arc::new(Texture::new("assets/ice.png"));
-    let ice_material =
-        Material::new_with_texture(2.0, [0.3, 0.3, 0.0, 0.4], 0.5, ice_texture, None);
+    let ice_material = Material::new_with_texture(
+        2.0,
+        [0.3, 0.3, 0.0, 0.4],
+        0.5,
+        ice_texture.clone(),
+        None,
+        Color::black(),
+        0.0,
+    );
 
     let stone_texture = Arc::new(Texture::new("assets/stone.png"));
-    let stone_material = Material::new_with_texture(2.0, [0.7, 0.1, 0.0, 0.0], 0.0, stone_texture, None);
+    let stone_material = Material::new_with_texture(
+        2.0,
+        [0.7, 0.1, 0.0, 0.0],
+        0.0,
+        stone_texture.clone(),
+        None,
+        Color::black(),
+        0.0,
+    );
 
-    
+    let glowstone_texture = Arc::new(Texture::new("assets/glowstone.png"));
+    let glowstone_material = Material::new_with_texture(
+        1.5,                       // Especular reducido para menos brillo
+        [1.2, 0.1, 0.0, 0.0],      // Albedo ajustado: Difusa aumentada, especular reducida
+        1.0,                       // Índice de refracción
+        glowstone_texture.clone(), // Textura
+        None,                      // Mapa de normales (None en este caso)
+        Color::new(200, 180, 80), // Luz cálida (amarillo)
+        0.3,                       // Intensidad de emisión reducida aún más
+    );         
+
     let skybox_texture = Arc::new(Texture::new("assets/snowy.jpg"));
-    
+
     let mut objects: Vec<Box<dyn RayIntersect>> = Vec::new();
     let rows = 9;
     let cols = 9;
-    let size = 2.0; 
-    let x_offset = -(cols as f32) * size / 2.0; 
-    let z_offset = -(rows as f32) * size / 2.0; 
+    let size = 2.0;
+    let x_offset = -(cols as f32) * size / 2.0;
+    let z_offset = -(rows as f32) * size / 2.0;
 
-    
     for row in 0..rows {
         for col in 0..cols {
             let x = x_offset + col as f32 * size;
             let z = z_offset + row as f32 * size;
-            let material = if random::<bool>() {
+    
+            // Decidir si colocar un bloque de glowstone
+            let material = if random::<f32>() < 0.05 {
+                glowstone_material.clone()
+            } else if random::<bool>() {
                 snow_material.clone()
             } else {
                 stone_material.clone()
             };
+    
             let cube = Cube {
                 min: Vec3::new(x, -size / 2.0, z),
                 max: Vec3::new(x + size, size / 2.0, z + size),
@@ -262,45 +311,54 @@ fn main() {
             };
             objects.push(Box::new(cube));
         }
-    }
+    }    
 
-    
     let pattern_positions_level_1_and_2 = vec![
-        
-        (2, 2), (2, 3), (2, 4), (2, 5), (2, 6),
-        
-        (3, 1), (3, 7),
-        
-        (4, 1), (4, 7),
-        
-        (5, 1), (5, 7),
-        
-        (6, 2), (6, 3), (6, 5), (6, 6),
+        (2, 2),
+        (2, 3),
+        (2, 4),
+        (2, 5),
+        (2, 6),
+        (3, 1),
+        (3, 7),
+        (4, 1),
+        (4, 7),
+        (5, 1),
+        (5, 7),
+        (6, 2),
+        (6, 3),
+        (6, 5),
+        (6, 6),
     ];
 
     let pattern_positions_level_3 = vec![
-        
-        (2, 3), (2, 4), (2, 5),
-        
-        (3, 2), (3, 3), (3, 4), (3, 5), (3, 6),
-        
-        (4, 1), (4, 2), (4, 3), (4, 4), (4, 5), (4, 6), (4, 7),
-        
-        (5, 2), (5, 3), (5, 4), (5, 5), (5, 6),
-        
-        (6, 3), (6, 4), (6, 5),
-    ];
-
-    let pattern_positions_level_4 = vec![
-        
+        (2, 3),
+        (2, 4),
+        (2, 5),
+        (3, 2),
+        (3, 3),
         (3, 4),
-        
-        (4, 3), (4, 4), (4, 5),
-        
+        (3, 5),
+        (3, 6),
+        (4, 1),
+        (4, 2),
+        (4, 3),
+        (4, 4),
+        (4, 5),
+        (4, 6),
+        (4, 7),
+        (5, 2),
+        (5, 3),
         (5, 4),
+        (5, 5),
+        (5, 6),
+        (6, 3),
+        (6, 4),
+        (6, 5),
     ];
 
-    
+    let pattern_positions_level_4 = vec![(3, 4), (4, 3), (4, 4), (4, 5), (5, 4)];
+
     struct LevelPattern {
         y_level: f32,
         positions: Vec<(usize, usize)>,
@@ -325,7 +383,6 @@ fn main() {
         },
     ];
 
-    
     for level in levels {
         for (row, col) in &level.positions {
             let x = x_offset + *col as f32 * size;
@@ -339,18 +396,40 @@ fn main() {
         }
     }
 
-    
     let mut camera = Camera::new(
-        Vec3::new(0.0, 15.0, 30.0), 
-        Vec3::new(0.0, 0.0, 0.0),   
-        Vec3::new(0.0, 1.0, 0.0),   
+        Vec3::new(0.0, 15.0, 30.0),
+        Vec3::new(0.0, 0.0, 0.0),
+        Vec3::new(0.0, 1.0, 0.0),
     );
     let rotation_speed = PI / 50.0;
     let zoom_speed = 0.1;
 
     let light1 = Light::new(Vec3::new(20.0, 30.0, 20.0), Color::new(177, 182, 250), 15.0);
-    let light2 = Light::new(Vec3::new(-20.0, 30.0, -20.0), Color::new(255, 180, 180), 10.0);
+    let light2 = Light::new(
+        Vec3::new(-20.0, 30.0, -20.0),
+        Color::new(255, 180, 180),
+        10.0,
+    );
     let lights = vec![light1, light2];
+
+    // Crear la lista de luces incluyendo las emisivas
+    let mut emissive_lights: Vec<Light> = Vec::new();
+    for obj in &objects {
+        if let Some(cube) = obj.as_any().downcast_ref::<Cube>() {
+            if cube.material.emission_intensity > 0.0 {
+                let position = (cube.min + cube.max) * 0.5;
+                let light = Light::new(
+                    position,
+                    cube.material.emission_color,
+                    cube.material.emission_intensity,
+                );
+                emissive_lights.push(light);
+            }
+        }
+    }
+
+    let mut all_lights = lights.clone(); // Ahora puedes clonar `lights`
+    all_lights.extend(emissive_lights);
 
     let window_width = 800;
     let window_height = 600;
@@ -375,10 +454,8 @@ fn main() {
             break;
         }
 
-        
         let object_refs: Vec<&dyn RayIntersect> = objects.iter().map(|obj| obj.as_ref()).collect();
 
-        
         if window.is_key_down(Key::Left) {
             camera.orbit(rotation_speed, 0.0);
         }
@@ -404,7 +481,7 @@ fn main() {
                 &mut framebuffer,
                 &object_refs,
                 &camera,
-                &lights,  
+                &all_lights,
                 &skybox_texture,
             );
         }

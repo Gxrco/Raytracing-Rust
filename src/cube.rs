@@ -69,4 +69,8 @@ impl RayIntersect for Cube {
 
         Intersect::new(intersect_point, normal, tmin, self.material.clone(), u, v)
     }
+
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
 }

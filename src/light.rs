@@ -1,6 +1,7 @@
 use nalgebra_glm::Vec3;
 use crate::color::Color;
 
+#[derive(Clone)] // Esto permite clonar instancias de Light
 pub struct Light {
     pub position: Vec3,
     pub color: Color,

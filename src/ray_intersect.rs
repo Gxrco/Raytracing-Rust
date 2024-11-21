@@ -40,6 +40,7 @@ impl Intersect {
 
 pub trait RayIntersect: Send + Sync {
     fn ray_intersect(&self, ray_origin: &Vec3, ray_direction: &Vec3) -> Intersect;
+    fn as_any(&self) -> &dyn std::any::Any;
 }
 
 

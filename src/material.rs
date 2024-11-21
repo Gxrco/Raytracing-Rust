@@ -14,10 +14,19 @@ pub struct Material {
     pub has_normal_map: bool,
     pub texture: Option<Arc<Texture>>,     
     pub normal_map: Option<Arc<Texture>>,   
+    pub emission_color: Color,        
+    pub emission_intensity: f32,      
 }
 
 impl Material {
-    pub fn new(diffuse: Color, specular: f32, albedo: [f32; 4], refractive_index: f32) -> Self {
+    pub fn new(
+        diffuse: Color,
+        specular: f32,
+        albedo: [f32; 4],
+        refractive_index: f32,
+        emission_color: Color,        
+        emission_intensity: f32,      
+    ) -> Self {
         Material {
             diffuse,
             specular,
@@ -27,6 +36,8 @@ impl Material {
             has_normal_map: false,
             texture: None,
             normal_map: None,
+            emission_color,
+            emission_intensity,
         }
     }
 
@@ -36,6 +47,8 @@ impl Material {
         refractive_index: f32,
         texture: Arc<Texture>,
         normal_map: Option<Arc<Texture>>, 
+        emission_color: Color,        
+        emission_intensity: f32,      
     ) -> Self {
         Material {
             diffuse: Color::new(0, 0, 0), 
@@ -46,6 +59,8 @@ impl Material {
             has_normal_map: normal_map.is_some(),
             texture: Some(texture), 
             normal_map,             
+            emission_color,
+            emission_intensity,
         }
     }
 
@@ -82,6 +97,8 @@ impl Material {
             has_normal_map: false,
             texture: None,
             normal_map: None,
+            emission_color: Color::new(0, 0, 0),        
+            emission_intensity: 0.0,      
         }
     }
 }
