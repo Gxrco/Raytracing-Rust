@@ -272,14 +272,25 @@ fn main() {
 
     let glowstone_texture = Arc::new(Texture::new("assets/glowstone.png"));
     let glowstone_material = Material::new_with_texture(
-        1.5,                       // Especular reducido para menos brillo
-        [1.2, 0.1, 0.0, 0.0],      // Albedo ajustado: Difusa aumentada, especular reducida
-        1.0,                       // Índice de refracción
-        glowstone_texture.clone(), // Textura
-        None,                      // Mapa de normales (None en este caso)
-        Color::new(200, 180, 80), // Luz cálida (amarillo)
-        0.3,                       // Intensidad de emisión reducida aún más
-    );         
+        1.5,                       
+        [1.2, 0.1, 0.0, 0.0],      
+        1.0,                       
+        glowstone_texture.clone(), 
+        None,                      
+        Color::new(200, 180, 80),  
+        0.3,                       
+    );
+
+    let packed_ice_texture = Arc::new(Texture::new("assets/packed_ice.png"));
+    let packed_ice_material = Material::new_with_texture(
+        1.8,                        
+        [0.9, 0.2, 0.0, 0.1],       
+        0.2,                       
+        packed_ice_texture.clone(), 
+        None,                       
+        Color::black(),             
+        0.0,                        
+    );
 
     let skybox_texture = Arc::new(Texture::new("assets/snowy.jpg"));
 
@@ -294,8 +305,8 @@ fn main() {
         for col in 0..cols {
             let x = x_offset + col as f32 * size;
             let z = z_offset + row as f32 * size;
-    
-            // Decidir si colocar un bloque de glowstone
+
+            
             let material = if random::<f32>() < 0.05 {
                 glowstone_material.clone()
             } else if random::<bool>() {
@@ -303,7 +314,7 @@ fn main() {
             } else {
                 stone_material.clone()
             };
-    
+
             let cube = Cube {
                 min: Vec3::new(x, -size / 2.0, z),
                 max: Vec3::new(x + size, size / 2.0, z + size),
@@ -311,7 +322,7 @@ fn main() {
             };
             objects.push(Box::new(cube));
         }
-    }    
+    }
 
     let pattern_positions_level_1_and_2 = vec![
         (2, 2),
@@ -387,14 +398,22 @@ fn main() {
         for (row, col) in &level.positions {
             let x = x_offset + *col as f32 * size;
             let z = z_offset + *row as f32 * size;
+    
+            
+            let material = if (row + col) % 2 == 0 {
+                packed_ice_material.clone()
+            } else {
+                ice_material.clone()
+            };
+    
             let cube = Cube {
                 min: Vec3::new(x, level.y_level, z),
                 max: Vec3::new(x + size, level.y_level + size, z + size),
-                material: ice_material.clone(),
+                material,
             };
             objects.push(Box::new(cube));
         }
-    }
+    }    
 
     let mut camera = Camera::new(
         Vec3::new(0.0, 15.0, 30.0),
@@ -404,15 +423,15 @@ fn main() {
     let rotation_speed = PI / 50.0;
     let zoom_speed = 0.1;
 
-    let light1 = Light::new(Vec3::new(20.0, 30.0, 20.0), Color::new(177, 182, 250), 15.0);
+    let light1 = Light::new(Vec3::new(20.0, 30.0, 20.0), Color::new(150, 180, 255), 15.0);
     let light2 = Light::new(
         Vec3::new(-20.0, 30.0, -20.0),
-        Color::new(255, 180, 180),
+        Color::new(180, 180, 255),
         10.0,
     );
     let lights = vec![light1, light2];
 
-    // Crear la lista de luces incluyendo las emisivas
+    
     let mut emissive_lights: Vec<Light> = Vec::new();
     for obj in &objects {
         if let Some(cube) = obj.as_any().downcast_ref::<Cube>() {
@@ -428,7 +447,7 @@ fn main() {
         }
     }
 
-    let mut all_lights = lights.clone(); // Ahora puedes clonar `lights`
+    let mut all_lights = lights.clone(); 
     all_lights.extend(emissive_lights);
 
     let window_width = 800;
