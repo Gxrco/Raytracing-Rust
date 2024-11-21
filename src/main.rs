@@ -5,6 +5,7 @@ use std::f32::consts::PI;
 use std::time::Duration;
 use rayon::prelude::*;
 use std::sync::{Arc, Mutex};
+use rand::random;
 
 mod camera;
 mod color;
@@ -231,6 +232,9 @@ fn main() {
     let ice_material =
         Material::new_with_texture(2.0, [0.3, 0.3, 0.0, 0.4], 0.5, ice_texture, None);
 
+    let stone_texture = Arc::new(Texture::new("assets/stone.png"));
+    let stone_material = Material::new_with_texture(2.0, [0.7, 0.1, 0.0, 0.0], 0.0, stone_texture, None);
+
     
     let skybox_texture = Arc::new(Texture::new("assets/snowy.jpg"));
     
@@ -246,10 +250,15 @@ fn main() {
         for col in 0..cols {
             let x = x_offset + col as f32 * size;
             let z = z_offset + row as f32 * size;
+            let material = if random::<bool>() {
+                snow_material.clone()
+            } else {
+                stone_material.clone()
+            };
             let cube = Cube {
                 min: Vec3::new(x, -size / 2.0, z),
                 max: Vec3::new(x + size, size / 2.0, z + size),
-                material: snow_material.clone(),
+                material,
             };
             objects.push(Box::new(cube));
         }
